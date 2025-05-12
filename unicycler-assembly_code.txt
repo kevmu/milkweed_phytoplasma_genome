@@ -1,0 +1,370 @@
+#Phytoplasma genome assemblies - Illumina pre processing
+#Working on saskdome01.agr.gc.ca
+#lilac 2A1 (2A1) genome - Ag Canada Illumina MiSeq reads; Ag Canada nanopore reads 
+#milkweed yellows phytoplasma (MYp) genome - OPAL illumina reads; Ag Canada nanopore reads
+#code is for MYp; 2A1 done in the same manner
+#April 1/ 2025
+
+#make conda environment
+
+conda create --name hyb
+
+conda activate hyb
+
+conda install -c bioconda trimmomatic
+
+conda install -c bioconda flash2
+
+#Get read names 
+
+mkdir -p /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim
+
+#do not merge reads; map R1 and R2 separately to minimize read loss
+#mkdir -p /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/merge
+
+#make file with prefixes from Illumina files
+find /archive/dumonceauxt/milkweed-genome_250331/OPAL_Illumina/OS016736*.fastq.gz -maxdepth 1 | sed 's/\/.*\///'  | sed 's/_r.*$//'  | sed 's/Undetermined.*$//'  | sort | uniq > /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/OPAL-Illumina_fastq_files.txt
+
+#trimmomatic
+trimmomatic PE \
+/archive/dumonceauxt/milkweed-genome_250331/OPAL_Illumina/OS016736_r1.fastq' \
+/archive/dumonceauxt/milkweed-genome_250331/OPAL_Illumina/OS016736_r2.fastq \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim/OS016736.paired.fq' \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim/OS016736.unpaired.fq' \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim/OS016736.paired.reverse.fq' \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim/OS016736.unpaired.reverse.fq' \
+LEADING:3 TRAILING:20 SLIDINGWINDOW:4:15 MINLEN:36 \
+
+#results for milkweed 2A1
+#Quality encoding detected as phred33
+#Input Read Pairs: 59404771 Both Surviving: 57879811 (97.43%) Forward Only Surviving: 876192 (1.47%) Reverse Only Surviving: 475661 (0.80%) Dropped: 173107 (0.29%)
+#TrimmomaticPE: Completed successfully
+#read numbers should match in paired, paired reverse:
+seqkit stats OS016736.paired.fq
+#file                format  type    num_seqs        sum_len  min_len  avg_len  max_len
+#OS016736.paired.fq  FASTQ   DNA   57,879,811  8,514,854,047       36    147.1      151
+seqkit stats OS016736.paired.fq
+#file                        format  type    num_seqs        sum_len  min_len  avg_len  max_len
+#OS016736.paired.reverse.fq  FASTQ   DNA   57,879,811  8,524,742,765       36    147.3      151
+#results for lilac 2A1:
+seqkit stats Lilac2A1_S9_L001.paired.fq
+#file                        format  type   num_seqs      sum_len  min_len  avg_len  max_len
+#Lilac2A1_S9_L001.paired.fq  FASTQ   DNA   1,505,177  349,298,560       36    232.1      301
+seqkit stats Lilac2A1_S9_L001.paired.reverse.fq
+#file                                format  type   num_seqs      sum_len  min_len  avg_len  max_len
+#Lilac2A1_S9_L001.paired.reverse.fq  FASTQ   DNA   1,505,177  320,312,100       36    212.8      301
+
+
+#do not merge with flash2 - want to map fwd and rev reads separately, to minimize read loss
+
+#for lilac 2A1 - make bowtie reference files
+
+#genomic mapping vs 16SrIII genome downloaded from GenBank: PR2021 - GCA_029746895.1
+
+bowtie2-build \
+-f /home/AGR.GC.CA/dumonceauxt/mapping_ref_seq/PR2021_16SrIII_genome.fna \
+/home/AGR.GC.CA/dumonceauxt/mapping_ref_seq/PR2021_16SrIII_genome.fna
+
+#make bowtie (mapping) shell script
+
+nano /home/AGR.GC.CA/dumonceauxt/TW1-genome-repeat22/illumina/map_ref_genes.sh
+
+#copy/paste below
+
+#!/bin/bash
+#$ -S /bin/bash
+#$ -N townj_map
+#$ -j y
+#$ -cwd
+#$ -pe smp 8
+
+#source /home/AAFC-AAC/dumonceauxt/miniconda3/etc/profile.d/conda.sh
+#conda activate hyb
+#map to 16SrIII genome and extract mapped reads without merging reads
+
+bowtie2 -p 5 --local \
+-x /home/AGR.GC.CA/dumonceauxt/mapping_ref_seq/PR2021_16SrIII_genome.fna \
+-1 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/illumina/trim/Lilac2A1_S9_L001.paired.fq \
+-2 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/illumina/trim/Lilac2A1_S9_L001.paired.reverse.fq \
+| samtools view -bS \
+> /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/illumina/2A1_PR2021_mapped.bam
+#1505177 reads; of these:
+#  1505177 (100.00%) were paired; of these:
+#    1300143 (86.38%) aligned concordantly 0 times
+#    174601 (11.60%) aligned concordantly exactly 1 time
+#    30433 (2.02%) aligned concordantly >1 times
+#    ----
+#    1300143 pairs aligned concordantly 0 times; of these:
+#      9302 (0.72%) aligned discordantly 1 time
+#    ----
+#    1290841 pairs aligned 0 times concordantly or discordantly; of these:
+#      2581682 mates make up the pairs; of these:
+#        2577650 (99.84%) aligned 0 times
+#        1011 (0.04%) aligned exactly 1 time
+#        3021 (0.12%) aligned >1 times
+#14.37% overall alignment rate
+
+#repeat this step using MYp Illumina reads:
+#  57879811 (100.00%) were paired; of these:
+    47174864 (81.50%) aligned concordantly 0 times
+    9875762 (17.06%) aligned concordantly exactly 1 time
+    829185 (1.43%) aligned concordantly >1 times
+    ----
+    47174864 pairs aligned concordantly 0 times; of these:
+      1168842 (2.48%) aligned discordantly 1 time
+    ----
+    46006022 pairs aligned 0 times concordantly or discordantly; of these:
+      92012044 mates make up the pairs; of these:
+        91559162 (99.51%) aligned 0 times
+        285291 (0.31%) aligned exactly 1 time
+        167591 (0.18%) aligned >1 times
+#20.91% overall alignment rate
+
+#convert bam file to fastq to give a set of mapped Illumina reads
+samtools view -b 2A1_PR2021_mapped.bam > 2A1_PR2021_mapped.bam
+samtools bam2fq 2A1_PR2021_mapped.bam > 2A1_PR2021_mapped.fq
+
+
+#MYp only: map Illumina reads using BWA-MEM - from https://github.com/lh3/bwa
+git clone https://github.com/lh3/bwa.git
+cd bwa
+make #this updates bwa
+./bwa index ref.fa $ref.fa is the reference genome; MY in this case. Creates many files within the working folder bwa
+
+#map Illumina reads with bwa
+bwa mem MY-genome-GenBank.fna \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim/OS016736.paired.fq \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/pre_processing/trim/OS016736.paired.reverse.fq \
+> MY-IllOPAL-aln-pe.sam
+
+
+#then have to do read1 read 2 for samtools fastq
+#samtools view -bS --threads 40 MY-IllOPAL-aln-pe.sam -o MY-IllOPAL-aln-pe.bam
+#specify to keep only read pairs using the -f 3 -F 12 flags, which ensures that only properly paired reads where both mates are mapped are retained:
+samtools view -bS -f 3 -F 12 --threads 40 MY-IllOPAL-aln-pe.sam -o MY-IllOPAL-aln-pe.bam
+samtools sort MY-IllOPAL-aln-pe.bam -o MY-IllOPAL-aln-pe.sorted.bam 
+samtools index MY-IllOPAL-aln-pe.sorted.bam
+samtools view -bh --threads 40 MY-IllOPAL-aln-pe.sorted.bam  -F 4 -o MY-IllOPAL-aln-pe.mapped.bam
+samtools fastq MY-IllOPAL-aln-pe.mapped.bam \
+-1 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MY-mapped-IllOPAL-R1.fastq \
+-2 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MY-mapped-IllOPAL-R2.fastq --threads 40 
+
+#reads mapping to 16SrIII genome:
+
+seqkit stats MY-mapped-IllOPAL*.fastq
+
+#MY-mapped-IllOPAL-R1.fastq:12482861
+#MY-mapped-IllOPAL-R2.fastq:12482861
+
+#Illumina reads mapped, ready for assembly
+#percentage of reads mapping - reads IN:
+grep -c A01793 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new//pre_processing/trim/OS016736.paired.fq
+#57879811
+grep -c A01793 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new//pre_processing/trim/OS016736.paired.reverse.fq
+#57879811
+#12482861/57879811 = 21.6% of reads mapped, similar to bowtie - 20.91% reads mapping
+
+#assembly
+
+#install unicycler
+# Get the .bashrc file and run it. Do so if you do not see (base) on login cursor.
+source ~/.bashrc 
+
+# Create the unicycler conda environment.
+conda create --name unicycler_env
+
+# Activate the unicycler conda environment.
+conda activate unicycler_env
+
+# Install unicycler conda package.
+conda install -c bioconda unicycler
+
+# Test unicycler to see if it prompts you for parameter options. 
+unicycler --help
+
+#got a dependency error (samtools too old) when trying to run. Fixed using this:
+conda install -c bioconda samtools=1.11
+#path to milkweed nanopore reads November 2024:
+/archive/dumonceauxt/milkweed-genome_250331/20241101_2017_MC-110755_FAZ53284_e7154b0e_nanopore/fastq_pass/milkweed-241104.fastq
+
+#filter these reads to >1k using filtlong - do not use reference mapping
+filtlong --min_length 1000 --keep_percent 90 --target_bases 500000000 \
+/archive/dumonceauxt/milkweed-genome_250331/20241101_2017_MC-110755_FAZ53284_e7154b0e_nanopore/fastq_pass/milkweed-241104.fastq \
+| gzip > ./milkweed-241101-1k.fastq.gz
+
+#unicycler syntax unicycler -1 short_reads_1.fastq.gz -2 short_reads_2.fastq.gz -l long_reads.fastq.gz -o output_dir
+conda activate unicycler_env
+unicycler -1 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MY-mapped-IllOPAL-R1.fastq \
+-2 /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MY-mapped-IllOPAL-R2.fastq  \
+-l /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/milkweed-241101-1k.fastq \
+-o /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MYp_unicycler_assembly_250403/
+
+#Add in the nanopore reads obtained from PS - MY_nanopore.fq contains another 135k reads, unmapped and unfiltered
+
+cat milkweed-241101-1k.fastq MY_nanopore-1k.fastq > MYp-nanopore-all-1k.fastq
+#this gives a file with 162806 reads that are >1k. Of these, about 20% (32.5k) should correspond to phytoplasma
+#average read length:
+seqkit stats milkweed-241101-1k.fastq
+#file (first assembly)     format  type  num_seqs      sum_len  min_len  avg_len  max_len
+#milkweed-241101-1k.fastq  FASTQ   DNA    107,904  500,003,870    2,493  4,633.8  913,139
+#seqkit stats MYp-nanopore-all-1k.fastq
+#file (second assembly)     format  type  num_seqs      sum_len  min_len  avg_len  max_len
+#MYp-nanopore-all-1k.fastq  FASTQ   DNA    162,806  629,295,134    1,000  3,865.3  913,139
+#seqkit stats MY-mapped-IllOPAL-R1.fastq
+#file                        format  type    num_seqs        sum_len  min_len  avg_len  max_len
+#MY-mapped-IllOPAL-R1.fastq  FASTQ   DNA   12,482,861  1,835,371,407       36      147      151
+seqkit stats MY-mapped-IllOPAL-R2.fastq
+#file                        format  type    num_seqs        sum_len  min_len  avg_len  max_len
+#MY-mapped-IllOPAL-R2.fastq  FASTQ   DNA   12,482,861  1,836,119,452       36    147.1      151
+
+
+#unicycler assembly using the long read file MYp-nanopore-all-1k.fastq, same Illumina reads
+#Illumina reads mapped, nanopore reads filtered to >1k but not mapped
+#this gave many contigs - 58 total, but most were under 1 kb. Filter to include only contigs > 1kb:
+seqkit seq -m 1000 assembly.fasta > assembly-1kfiltered.fasta
+>1 length=388840 depth=1.00x #phytoplasma by BLAST
+>2 length=209664 depth=0.98x #phytoplasma by BLAST
+>3 length=53540 depth=0.94x #phytoplasma by BLAST
+>4 length=35585 depth=1.94x #milkweed by BLAST; remove
+>5 length=34953 depth=0.91x #phytoplasma by BLAST
+>6 length=4441 depth=1.73x circular=true #this one looks like the phytoplasma plasmid found in PR2021 by BLAST
+>7 length=1414 depth=3.76x #phytoplasma by BLAST
+>8 length=1015 depth=1.73x #phytoplasma by BLAST
+#MYp genome is in 6 pieces, plus a plasmid
+#confirm plasmid identity of contig 6 using plasmer
+cd ~/Plasmer
+conda activate plasmer
+Plasmer -g /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MYp_unicycler_assembly_250403/MYp-Canadensis_assembly0403.fasta \
+-p MYp250403 -d ./ -t 64 -m 500 -l 500000 -o /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MYp_unicycler_assembly_250403/plasmer
+#1       chromosome
+#2       chromosome
+#3       chromosome
+#4       chromosome
+#5       chromosome
+#6       plasmid
+#7       chromosome
+#8       chromosome
+
+
+#determine N50 using n50.py - https://github.com/Maj18/N50
+wget https://raw.githubusercontent.com/Maj18/N50/main/n50.py
+conda activate autocycler
+python n50.py -i "assembly.fasta" > assembly-n50.txt
+#N50 is 388840
+
+
+#check genome assembly for completeness using busco:
+
+#busco --download <lineage_dataset>
+#busco --download all
+busco --download prokaryota
+busco --download bacteria_odb12 - copilot suggests that this might be better for a specifically bacterial dataset
+#place the prokaryotic lineage dataset to a common directory
+/archive/dumonceauxt/busco_downloads/lineages/bacteria_odb12
+
+#busco --download eukaryota
+#busco --download virus
+#busco -i <input_file> -l /archive/dumonceauxt/busco_downloads/lineages/ -o <output_directory> -m genome
+
+busco -i <input_file> -l /archive/dumonceauxt/busco_downloads/lineages/bacteria_odb12 -o <output_directory> -m genome
+#C:67.2%[S:67.2%,D:0.0%],F:1.7%,M:31.0%,n:116
+#        78      Complete BUSCOs (C)
+#        78      Complete and single-copy BUSCOs (S)
+#        0       Complete and duplicated BUSCOs (D)
+#        2       Fragmented BUSCOs (F)
+#        36      Missing BUSCOs (M)
+#        116     Total BUSCO groups searched
+
+##annotate using bakta
+conda activate bakta
+cd ~/bakta
+bakta --db ../bakta/db-light --prefix MYp-Canadensis \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MYp_unicycler_assembly_250403/MYp-Canadensis_assembly.fasta \
+--output /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MYp_unicycler_assembly_250403/bakta/ --threads 64
+
+#use bmtagger to remove host reads by mapping to the milkweed genome, which is now available - https://milkweedbase.org/
+#this will facilitate the inclusion of non-phytoplasma, non-host reads to examine contigs for any possible instances of HGT 
+#bmtagger
+
+ conda create --name bmtagger_env
+ conda activate bmtagger_env
+ conda install bioconda::bmtagger
+
+#download milkweed chromosomal sequences from milkweedbase.org
+#add A. syriaca mitochondria and chloroplast genomes downloaded from NCBI
+#then create reference database:
+cat Asclepias_syriaca_v1.0_chromosomes.fa A_syr_chloroplast.fasta A_syr_mitochondria.fasta > A_syr_all.fasta
+bmtool -d A_syr_all.fasta -o A_syr_all.fasta.bitmask -w 18 &> bmtool.bitmask.log.txt
+srprism mkindex -i A_syr_all.fasta -o A_syr_all.fasta.srprism -M 7168 &> srprism.mkindex.log.txt
+#this step kept failing; mitochondria and chloroplast sequences had hidden carriage returns. Visualized and removed them:
+cat -v A_syr_mitochondria.fasta #this revealed ^M, a hidden carriage return, at the end of every line
+sed 's/\r//g' < A_syr_mitochondria.fasta > A_syr_mitochondria-nocr.fasta #this got rid of it
+#did the same for the chloroplast sequences
+cat -v A_syr_chloroplast.fasta
+sed 's/\r//g' < A_syr_chloroplast.fasta > A_syr_chloroplast-nocr.fasta
+#then make a new concatenated file
+cat Asclepias_syriaca_v1.0_chromosomes.fa A_syr_chloroplast-nocr.fasta A_syr_mitochondria-nocr.fasta > A_syr_all.fasta
+
+conda activate bmtagger_env
+bmtool -d A_syr_all.fasta -o A_syr_all.fasta.bitmask -w 18 &> bmtool.bitmask.log.txt
+#this completed without apparent errors
+#Run srprism on genome assembly fna file to make index for srprism using command
+srprism mkindex -i A_syr_all.fasta -o A_syr_all.fasta.srprism -M 7168 &> srprism.mkindex.log.txt
+
+#remove host reads - start from within folder containing Illumina reads
+#Command to run bmtagger.
+#bmtagger.sh -b ${bmtool_ref} -x ${srprism_ref} -q 1 -1 {input.r1} -2 {input.r2} -o ${output_dir} -X;
+#bmtagger doesn’t accept .gz data, so we have to uncompress them to let it recognize fastq
+#also, must define a temporary folder for it, otherwise it will go to server temp folder which we don’t have full authorization. -T flag can fix it.
+#unzip the fastq.gz files and add -T flag (e.g. -T ./temp) to let it use the current folder for temp files 
+
+gunzip OS016736_r1.fastq.gz
+gunzip OS016736_r2.fastq.gz
+
+#cd to the folder of the fastq.gz sequence, then
+
+bmtagger.sh -b ../A_syriaca_database/A_syr_all.fasta.bitmask \
+-x ../A_syriaca_database/A_syr_all.fasta.srprism \
+-q 1 \
+-1 OS016736_r1.fastq \
+-2 OS016736_r2.fastq \
+-o MYp-noAs-chlmit -X \
+-T ../temp
+
+#number of reads in the new r1/r2
+conda activate autocycler
+seqkit stats MYp-noAs-chlmit_1.fastq
+#21,754,990
+seqkit stats MYp-noAs-chlmit_2.fastq
+#21,754,990
+
+#use minimap2 to remove host reads from nanopore dataset:
+minimap2 -ax map-ont /archive/dumonceauxt/milkweed-genome_250331/A_syriaca_database/Asclepias_syriaca_v1.0_chromosomes.fa \
+/home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/milkweed-241101-1k.fastq \
+> nanopore-1k_As-mapped.sam
+#Use samtools to filter out the aligned (host) reads:
+samtools view -b -f 4 nanopore-1k_As-mapped.sam > nanopore-1k_As-mapped.bam
+#Convert the BAM file back to FASTQ format:
+samtools fastq nanopore-1k_As-mapped.bam > nanopore-1k_As-mapped.fastq
+#26266 reads from nanopore after these steps
+#how many nanopore reads went into this filter step? 
+seqkit stats /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/milkweed-241101-1k.fastq
+#107904
+#assemble with unicycler using nanopore-1k_As-mapped.fastq for nanopore and MYp-noAs_1.fastq / MYp-noAs_2.fastq
+#stats for filtered, mapped nanopore reads: 
+  format  type  num_seqs      sum_len  min_len  avg_len  max_len
+  FASTQ   DNA     26,266  120,207,098    2,493  4,576.5  355,261
+#file paths for these reads:
+#Illumina: -1 /archive/dumonceauxt/milkweed-genome_250331/MYp-noAs_1.fastq -2 /archive/dumonceauxt/milkweed-genome_250331/MYp-noAs_2.fastq
+#nanopore: -l /archive/dumonceauxt/milkweed-genome_250331/nanopore-1k_As-mapped.bam
+
+
+conda activate unicycler_env
+unicycler -1 /archive/dumonceauxt/milkweed-genome_250331/OPAL_Illumina/MYp-noAs-chlmit_1.fastq \
+-2 /archive/dumonceauxt/milkweed-genome_250331/OPAL_Illumina/MYp-noAs-chlmit_2.fastq  \
+-l /archive/dumonceauxt/milkweed-genome_250331/nanopore-1k_As-mapped.fastq \
+-o /home/AGR.GC.CA/dumonceauxt/2A1-III-unicycler/milkweed_yellows24/2025-new/MYp_unicycler_assembly_250416/
+
+#unicycler assembly completed after many days - around 8k contigs, many short, many from non-phytoplasma bacteria. Use this as a BLAST database to look for cpn60 genes.
+#using tblastn with Phytoplasma (AYWB) Cpn60 query, found 9 hits. Found these same 9 hits using a Pantoea agglomerans Cpn60 (b30005)
+#none of these hits look like phytoplasma Cpn60, and none of the contigs on which they are found look like phytoplasma
